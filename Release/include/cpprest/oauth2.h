@@ -281,7 +281,7 @@ public:
         ub.append_query(oauth2::details::oauth2_strings::grant_type, oauth2::details::oauth2_strings::authorization_code, false);
         ub.append_query(oauth2::details::oauth2_strings::code, uri::encode_data_string(authorization_code), false);
         ub.append_query(oauth2::details::oauth2_strings::redirect_uri, uri::encode_data_string(redirect_uri()), false);
-        return _request_token(ub);
+        return token_from_custom_request(std::move(ub));
     }
 
     /// <summary>
@@ -297,8 +297,17 @@ public:
         uri_builder ub;
         ub.append_query(oauth2::details::oauth2_strings::grant_type, oauth2::details::oauth2_strings::refresh_token, false);
         ub.append_query(oauth2::details::oauth2_strings::refresh_token, uri::encode_data_string(token().refresh_token()), false);
-        return _request_token(ub);
+        return token_from_custom_request(std::move(ub));
     }
+
+    /// <summary>
+    /// Performs a custom token request using the provided URI's query component.
+    /// </summary>
+    /// <remarks>
+    /// This function can be used to interact with a nonstandard request flow.
+    /// See `token_from_refresh()` and `token_from_code()` for the built-in request flow implementations.
+    /// </remarks>
+    _ASYNCRTIMP pplx::task<void> token_from_custom_request(uri_builder request_body);
 
     /// <summary>
     /// Returns enabled state of the configuration.
@@ -468,8 +477,6 @@ public:
     _ASYNCRTIMP std::shared_ptr<http::http_pipeline_stage> create_pipeline_stage() const;
 
 private:
-    _ASYNCRTIMP pplx::task<void> _request_token(uri_builder& request_body);
-
     utility::string_t m_client_key;
     utility::string_t m_client_secret;
     uri_builder m_auth_uri;

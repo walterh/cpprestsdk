@@ -184,7 +184,7 @@ static oauth2_token _parse_token_from_json(const json::value& token_json, const 
     return result;
 }
 
-pplx::task<void> oauth2_config::_request_token(uri_builder& request_body_ub)
+pplx::task<void> oauth2_config::token_from_custom_request(uri_builder request_body_ub)
 {
     http_request request;
     request.set_method(methods::POST);
