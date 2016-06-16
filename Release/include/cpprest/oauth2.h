@@ -27,6 +27,7 @@
 #ifndef _CASA_OAUTH2_H
 #define _CASA_OAUTH2_H
 
+#include "cpprest/http_client.h"
 #include "cpprest/http_msg.h"
 #include "cpprest/details/web_utilities.h"
 
@@ -212,12 +213,24 @@ class oauth2_config
 public:
 
     oauth2_config(utility::string_t client_key, utility::string_t client_secret,
-            utility::string_t auth_endpoint, utility::string_t token_endpoint,
+        web::uri_builder auth_uri, const utility::string_t& token_endpoint,
+        utility::string_t redirect_uri, utility::string_t scope = utility::string_t())
+    : oauth2_config(
+        std::move(client_key),
+        std::move(client_secret),
+        std::move(auth_uri),
+        web::http::client::http_client(token_endpoint),
+        std::move(redirect_uri),
+        std::move(scope))
+    {}
+
+    oauth2_config(utility::string_t client_key, utility::string_t client_secret,
+            web::uri_builder auth_uri, web::http::client::http_client token_client,
             utility::string_t redirect_uri, utility::string_t scope=utility::string_t()) :
                 m_client_key(std::move(client_key)),
                 m_client_secret(std::move(client_secret)),
-                m_auth_endpoint(std::move(auth_endpoint)),
-                m_token_endpoint(std::move(token_endpoint)),
+                m_auth_uri(std::move(auth_uri)),
+                m_token_client(token_client._get_internal_pipeline()),
                 m_redirect_uri(std::move(redirect_uri)),
                 m_scope(std::move(scope)),
                 m_implicit_grant(false),
@@ -262,11 +275,11 @@ public:
     /// </summary>
     /// <param name="authorization_code">Code received via redirect upon successful authorization.</param>
     /// <returns>Task that fetches token(s) based on the authorization code.</returns>
-    pplx::task<void> token_from_code(utility::string_t authorization_code)
+    pplx::task<void> token_from_code(const utility::string_t& authorization_code)
     {
         uri_builder ub;
         ub.append_query(oauth2::details::oauth2_strings::grant_type, oauth2::details::oauth2_strings::authorization_code, false);
-        ub.append_query(oauth2::details::oauth2_strings::code, uri::encode_data_string(std::move(authorization_code)), false);
+        ub.append_query(oauth2::details::oauth2_strings::code, uri::encode_data_string(authorization_code), false);
         ub.append_query(oauth2::details::oauth2_strings::redirect_uri, uri::encode_data_string(redirect_uri()), false);
         return _request_token(ub);
     }
@@ -319,32 +332,36 @@ public:
     void set_client_secret(utility::string_t client_secret) { m_client_secret = std::move(client_secret); }
 
     /// <summary>
-    /// Get authorization endpoint URI string.
+    /// Get the authorization endpoint URI
     /// </summary>
-    /// <returns>Authorization endpoint URI string.</returns>
-    const utility::string_t& auth_endpoint() const { return m_auth_endpoint; }
-    /// <summary>
-    /// Set authorization endpoint URI string.
-    /// </summary>
-    /// <param name="auth_endpoint">Authorization endpoint URI string to set.</param>
-    void set_auth_endpoint(utility::string_t auth_endpoint) { m_auth_endpoint = std::move(auth_endpoint); }
+    const uri_builder& auth_uri_builder() const { return m_auth_uri; }
+
+    CASABLANCA_DEPRECATED("This API has been deprecated. Use `auth_uri_builder` instead.")
+    utility::string_t auth_endpoint() const { return m_auth_uri.to_string(); }
 
     /// <summary>
-    /// Get token endpoint URI string.
+    /// Set authorization endpoint URI.
     /// </summary>
-    /// <returns>Token endpoint URI string.</returns>
-    const utility::string_t& token_endpoint() const { return m_token_endpoint; }
+    void set_auth_uri_builder(const uri_builder& auth_endpoint) { m_auth_uri = auth_endpoint; }
+
+    CASABLANCA_DEPRECATED("This API has been deprecated. Use `set_auth_uri_builder` instead.")
+    void set_auth_endpoint(const uri_builder& auth_endpoint) { set_auth_uri_builder(auth_endpoint); }
+
     /// <summary>
-    /// Set token endpoint URI string.
+    /// Set the `http_client` used to retrieve new tokens.
+    /// To use a proxy when retrieving tokens, configure the `http_client` before assigning it here.
     /// </summary>
-    /// <param name="token_endpoint">Token endpoint URI string to set.</param>
-    void set_token_endpoint(utility::string_t token_endpoint) { m_token_endpoint = std::move(token_endpoint); }
+    void set_token_client(web::http::client::http_client token_client) { m_token_client = token_client._get_internal_pipeline(); }
+
+    CASABLANCA_DEPRECATED("This API has been deprecated. Use `set_token_client` instead.")
+    void set_token_endpoint(utility::string_t token_endpoint) { set_token_client(web::http::client::http_client(token_endpoint)); }
 
     /// <summary>
     /// Get redirect URI string.
     /// </summary>
     /// <returns>Redirect URI string.</returns>
     const utility::string_t& redirect_uri() const { return m_redirect_uri; }
+
     /// <summary>
     /// Set redirect URI string.
     /// </summary>
@@ -440,55 +457,26 @@ public:
     /// </summary>
     /// <returns>Access token key string.</returns>
     const utility::string_t&  access_token_key() const { return m_access_token_key; }
+
     /// <summary>
     /// Set access token key.
     /// If the service requires a "non-standard" key you must set it here.
     /// Default: "access_token".
     /// </summary>
     void set_access_token_key(utility::string_t access_token_key) { m_access_token_key = std::move(access_token_key); }
-	
-	/// <summary>
-	/// Get the web proxy object
-	/// </summary>
-	/// <returns>A reference to the web proxy object.</returns>
-	const web_proxy& proxy() const
-	{
-		return m_proxy;
-	}
-
-	/// <summary>
-	/// Set the web proxy object that will be used by token_from_code and token_from_refresh
-	/// </summary>
-	/// <param name="proxy">A reference to the web proxy object.</param>
-	void set_proxy(const web_proxy& proxy)
-	{
-		m_proxy = proxy;
-	}
 
     _ASYNCRTIMP std::shared_ptr<http::http_pipeline_stage> create_pipeline_stage() const;
 
 private:
-    friend class details::oauth2_pipeline_stage;
-
-    oauth2_config() :
-        m_implicit_grant(false),
-        m_bearer_auth(true),
-        m_http_basic_auth(true)
-    {}
-
     _ASYNCRTIMP pplx::task<void> _request_token(uri_builder& request_body);
-
-    oauth2_token _parse_token_from_json(const json::value& token_json);
 
     utility::string_t m_client_key;
     utility::string_t m_client_secret;
-    utility::string_t m_auth_endpoint;
-    utility::string_t m_token_endpoint;
+    uri_builder m_auth_uri;
+    std::shared_ptr<::web::http::client::http_pipeline> m_token_client;
     utility::string_t m_redirect_uri;
     utility::string_t m_scope;
     utility::string_t m_state;
-
-	web::web_proxy m_proxy;
 
     bool m_implicit_grant;
     bool m_bearer_auth;

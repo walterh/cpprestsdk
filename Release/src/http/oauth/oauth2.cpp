@@ -54,9 +54,11 @@ namespace experimental
 
 utility::string_t oauth2_config::build_authorization_uri(bool generate_state)
 {
-    const utility::string_t response_type((implicit_grant()) ? oauth2_strings::token : oauth2_strings::code);
-    uri_builder ub(auth_endpoint());
-    ub.append_query(oauth2_strings::response_type, response_type);
+    auto ub = auth_uri_builder();
+    if (implicit_grant())
+        ub.append_query(oauth2_strings::response_type, oauth2_strings::token);
+    else
+        ub.append_query(oauth2_strings::response_type, oauth2_strings::code);
     ub.append_query(oauth2_strings::client_id, client_key());
     ub.append_query(oauth2_strings::redirect_uri, redirect_uri());
 
@@ -109,51 +111,7 @@ pplx::task<void> oauth2_config::token_from_redirected_uri(const web::http::uri& 
     return pplx::task_from_result();
 }
 
-pplx::task<void> oauth2_config::_request_token(uri_builder& request_body_ub)
-{
-    http_request request;
-    request.set_method(methods::POST);
-    request.set_request_uri(utility::string_t());
-
-    if (!scope().empty())
-    {
-        request_body_ub.append_query(oauth2_strings::scope, uri::encode_data_string(scope()), false);
-    }
-
-    if (http_basic_auth())
-    {
-        // Build HTTP Basic authorization header.
-        const std::string creds_utf8(to_utf8string(
-            uri::encode_data_string(client_key()) + U(":") + uri::encode_data_string(client_secret())));
-        request.headers().add(header_names::authorization, U("Basic ")
-            + _to_base64(reinterpret_cast<const unsigned char*>(creds_utf8.data()), creds_utf8.size()));
-    }
-    else
-    {
-        // Add credentials to query as-is.
-        request_body_ub.append_query(oauth2_strings::client_id, uri::encode_data_string(client_key()), false);
-        request_body_ub.append_query(oauth2_strings::client_secret, uri::encode_data_string(client_secret()), false);
-    }
-    request.set_body(request_body_ub.query(), mime_types::application_x_www_form_urlencoded);
-
-	// configure proxy
-	http_client_config config;
-	config.set_proxy(m_proxy);
-
-    http_client token_client(token_endpoint(), config);
-
-    return token_client.request(request)
-    .then([](http_response resp)
-    {
-        return resp.extract_json();
-    })
-    .then([this](json::value json_resp) -> void
-    {
-        set_token(_parse_token_from_json(json_resp));
-    });
-}
-
-oauth2_token oauth2_config::_parse_token_from_json(const json::value& token_json)
+static oauth2_token _parse_token_from_json(const json::value& token_json, const utility::string_t& default_scope)
 {
     oauth2_token result;
 
@@ -196,8 +154,8 @@ oauth2_token oauth2_config::_parse_token_from_json(const json::value& token_json
         const auto &json_expires_in_val = token_json.at(oauth2_strings::expires_in);
 
         if (json_expires_in_val.is_number())
-           result.set_expires_in(json_expires_in_val.as_number().to_int64());
-        else 
+            result.set_expires_in(json_expires_in_val.as_number().to_int64());
+        else
         {
             // Handle the case of a number as a JSON "string".
             // Using streams because std::stoll isn't avaliable on Android.
@@ -220,10 +178,48 @@ oauth2_token oauth2_config::_parse_token_from_json(const json::value& token_json
     else
     {
         // Use the requested scope() if no scope parameter was returned.
-        result.set_scope(scope());
+        result.set_scope(default_scope);
     }
 
     return result;
+}
+
+pplx::task<void> oauth2_config::_request_token(uri_builder& request_body_ub)
+{
+    http_request request;
+    request.set_method(methods::POST);
+    request.set_request_uri(utility::string_t());
+
+    if (!scope().empty())
+    {
+        request_body_ub.append_query(oauth2_strings::scope, uri::encode_data_string(scope()), false);
+    }
+
+    if (http_basic_auth())
+    {
+        // Build HTTP Basic authorization header.
+        const std::string creds_utf8(to_utf8string(
+            uri::encode_data_string(client_key()) + U(":") + uri::encode_data_string(client_secret())));
+        request.headers().add(header_names::authorization, U("Basic ")
+            + _to_base64(reinterpret_cast<const unsigned char*>(creds_utf8.data()), creds_utf8.size()));
+    }
+    else
+    {
+        // Add credentials to query as-is.
+        request_body_ub.append_query(oauth2_strings::client_id, uri::encode_data_string(client_key()), false);
+        request_body_ub.append_query(oauth2_strings::client_secret, uri::encode_data_string(client_secret()), false);
+    }
+    request.set_body(request_body_ub.query(), mime_types::application_x_www_form_urlencoded);
+
+    return http_client(m_token_client).request(request)
+    .then([](http_response resp)
+    {
+        return resp.extract_json();
+    })
+    .then([this](json::value json_resp) -> void
+    {
+        set_token(_parse_token_from_json(json_resp, scope()));
+    });
 }
 
 namespace details

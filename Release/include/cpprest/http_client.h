@@ -671,6 +671,18 @@ public:
         return request(mtd, path_query_fragment, body, content_length, _XPLATSTR("application/octet-stream"), token);
     }
 
+    /// <summary>
+    /// Internal function for accessing the underlying pipeline pointer
+    /// </summary>
+    std::shared_ptr<::web::http::client::http_pipeline>& _get_internal_pipeline() { return m_pipeline; }
+
+    /// <summary>
+    /// Internal constructor for setting the underlying pipeline pointer
+    /// </summary>
+    explicit http_client(std::shared_ptr<::web::http::client::http_pipeline> pipeline_ptr)
+        : m_pipeline(std::move(pipeline_ptr))
+    {}
+
 private:
 
     std::shared_ptr<::web::http::client::http_pipeline> m_pipeline;
