@@ -48,6 +48,7 @@ Set following entry in the hosts file:
 
 #include "cpprest/http_listener.h"
 #include "cpprest/http_client.h"
+#include "cpprest/oauth2.h"
 
 using namespace utility;
 using namespace web;
@@ -180,13 +181,10 @@ public:
 
             if (!m_oauth2_config.token().is_valid_access_token())
             {
-                if (authorization_code_flow().get())
-                {
-                    m_http_config.set_oauth2(m_oauth2_config);
-                }
-                else
+                if (!authorization_code_flow().get())
                 {
                     ucout << "Authorization failed for " << m_name.c_str() << "." << std::endl;
+                    return;
                 }
             }
 
