@@ -24,7 +24,7 @@
 ****/
 
 #include "stdafx.h"
-
+#include "cpprest/oauth1.h"
 #if !defined(CPPREST_TARGET_XP)
 
 using namespace utility;
@@ -61,7 +61,7 @@ namespace experimental
 // Code analysis complains even though there is no bug.
 #pragma warning(push)
 #pragma warning(disable : 6102)
-std::vector<unsigned char> oauth1_config::_hmac_sha1(const utility::string_t& key, const utility::string_t& data)
+static std::vector<unsigned char> _hmac_sha1(const utility::string_t& key, const utility::string_t& data)
 {
     NTSTATUS status;
     BCRYPT_ALG_HANDLE alg_handle = nullptr;
@@ -122,7 +122,7 @@ using namespace Windows::Security::Cryptography;
 using namespace Windows::Security::Cryptography::Core;
 using namespace Windows::Storage::Streams;
 
-std::vector<unsigned char> oauth1_config::_hmac_sha1(const utility::string_t& key, const utility::string_t& data)
+static std::vector<unsigned char> _hmac_sha1(const utility::string_t& key, const utility::string_t& data)
 {
     Platform::String^ data_str = ref new Platform::String(data.c_str());
     Platform::String^ key_str = ref new Platform::String(key.c_str());
@@ -143,7 +143,7 @@ std::vector<unsigned char> oauth1_config::_hmac_sha1(const utility::string_t& ke
 
 #include <openssl/hmac.h>
 
-std::vector<unsigned char> oauth1_config::_hmac_sha1(const utility::string_t& key, const utility::string_t& data)
+static std::vector<unsigned char> _hmac_sha1(const utility::string_t& key, const utility::string_t& data)
 {
     unsigned char digest[HMAC_MAX_MD_CBLOCK];
     unsigned int digest_len = 0;
@@ -163,7 +163,7 @@ std::vector<unsigned char> oauth1_config::_hmac_sha1(const utility::string_t& ke
 // Notes:
 // - Doesn't support URIs without scheme or host.
 // - If URI port is unspecified.
-utility::string_t oauth1_config::_build_base_string_uri(const uri& u)
+static utility::string_t build_base_string_uri(const uri& u)
 {
     utility::ostringstream_t os;
     os.imbue(std::locale::classic());
@@ -176,36 +176,36 @@ utility::string_t oauth1_config::_build_base_string_uri(const uri& u)
     return uri::encode_data_string(os.str());
 }
 
-utility::string_t oauth1_config::_build_normalized_parameters(web::http::uri u, const oauth1_state& state) const
+static utility::string_t _build_normalized_parameters(const oauth1_config& config, web::http::uri u, const oauth1_state& state)
 {
     // While map sorts items by keys it doesn't take value into account.
     // We need to sort the query parameters separately.
-    std::map<utility::string_t, utility::string_t> queries_map = http::uri::split_query(std::move(u).query());
     std::vector<utility::string_t> queries;
-    for (const auto& query : queries_map)
+    static const auto append_query_map = [](std::vector<utility::string_t>& v, const std::map<utility::string_t, utility::string_t>& map)
     {
-        utility::ostringstream_t os;
-        os.imbue(std::locale::classic());
-        os << query.first << "=" << query.second;
-        queries.push_back(os.str());
-    }
-
-    for (const auto& query : parameters())
-    {
-        utility::ostringstream_t os;
-        os.imbue(std::locale::classic());
-        os << query.first << "=" << query.second;
-        queries.push_back(os.str());
-    }
+        for (const auto& query : map)
+        {
+            utility::string_t s;
+            s.reserve(query.first.size() + 1 + query.second.size());
+            s.append(query.first);
+            s.push_back(_XPLATSTR('='));
+            s.append(query.second);
+            v.push_back(std::move(s));
+        }
+    };
+    append_query_map(queries, http::uri::split_query(u.query()));
+    append_query_map(queries, config.parameters());
 
     // Push oauth1 parameters.
     queries.push_back(oauth1_strings::version + U("=1.0"));
-    queries.push_back(oauth1_strings::consumer_key + U("=") + web::uri::encode_data_string(consumer_key()));
-    if (!m_token.access_token().empty())
+    queries.push_back(oauth1_strings::consumer_key + U("=") + web::uri::encode_data_string(config.consumer_key()));
+    if (!config.token().access_token().empty())
     {
-        queries.push_back(oauth1_strings::token + U("=") + web::uri::encode_data_string(m_token.access_token()));
+        queries.push_back(oauth1_strings::token + U("=") + web::uri::encode_data_string(config.token().access_token()));
     }
     queries.push_back(oauth1_strings::signature_method + U("=") + method());
+
+
     queries.push_back(oauth1_strings::timestamp + U("=") + state.timestamp());
     queries.push_back(oauth1_strings::nonce + U("=") + state.nonce());
     if (!state.extra_key().empty())
@@ -225,19 +225,29 @@ utility::string_t oauth1_config::_build_normalized_parameters(web::http::uri u, 
     return uri::encode_data_string(os.str());
 }
 
-static bool is_application_x_www_form_urlencoded (http_request &request)
+static bool is_application_x_www_form_urlencoded(const http_request &request)
 {
-    const auto content_type(request.headers()[header_names::content_type]);
-    return 0 == content_type.find(web::http::details::mime_types::application_x_www_form_urlencoded);
+    const auto& urlenc_mime = web::http::details::mime_types::application_x_www_form_urlencoded;
+
+    auto it = request.headers().find(header_names::content_type);
+    if (it != request.headers().end())
+    {
+        // compare if content_type begins with application_x_www_form_urlencoded, since it is often suffixed with "; charset=utf-8"
+        if (wcsncmp(it->second.c_str(), urlenc_mime.c_str(), urlenc_mime.size()) == 0)
+            return true;
+    }
+    return false;
 }
 
-utility::string_t oauth1_config::_build_signature_base_string(http_request request, oauth1_state state) const
+// Builds signature base string according to:
+// http://tools.ietf.org/html/rfc5849#section-3.4.1.1
+static utility::string_t _build_signature_base_string(const oauth1_config& config, http_request request, const oauth1_state& state)
 {
     uri u(request.absolute_uri());
     utility::ostringstream_t os;
     os.imbue(std::locale::classic());
     os << request.method();
-    os << "&" << _build_base_string_uri(u);
+    os << "&" << build_base_string_uri(u);
 
 	// http://oauth.net/core/1.0a/#signing_process
 	// 9.1.1.  Normalize Request Parameters
@@ -250,27 +260,40 @@ utility::string_t oauth1_config::_build_signature_base_string(http_request reque
         // Note: this should be improved to not block and handle any potential exceptions.
         utility::string_t str = request.extract_string(true).get();
         request.set_body(str, web::http::details::mime_types::application_x_www_form_urlencoded);
-        uri v = http::uri_builder(request.absolute_uri()).append_query(std::move(str), false).to_uri();
-        os << "&" << _build_normalized_parameters(std::move(v), std::move(state));
+        uri v = http::uri_builder(std::move(u)).append_query(std::move(str), false).to_uri();
+        os << "&" << _build_normalized_parameters(config, std::move(v), state);
     }
     else
     {
-        os << "&" << _build_normalized_parameters(std::move(u), std::move(state));
+        os << "&" << _build_normalized_parameters(config, std::move(u), state);
     }
     return os.str();
 }
 
-utility::string_t oauth1_config::_build_signature(http_request request, oauth1_state state) const
+static utility::string_t _build_encoded_plaintext_signature(const oauth1_config& config)
 {
+    return uri::encode_data_string(config.consumer_secret()) + _XPLATSTR("&") + uri::encode_data_string(config.token().secret());
+}
+
+static utility::string_t _build_encoded_signature(const oauth1_config& config, http_request request, oauth1_state state)
+{
+    auto plaintext_signature = _build_encoded_plaintext_signature(config);
+
     if (oauth1_methods::hmac_sha1 == method())
     {
-        return _build_hmac_sha1_signature(std::move(request), std::move(state));
+        // Builds HMAC-SHA1 signature according to:
+        // http://tools.ietf.org/html/rfc5849#section-3.4.2
+        auto text = _build_signature_base_string(config, std::move(request), state);
+        auto digest = _hmac_sha1(std::move(plaintext_signature), std::move(text));
+        return utility::conversions::to_base64(std::move(digest));
     }
     else if (oauth1_methods::plaintext == method())
     {
-        return _build_plaintext_signature();
+        // Builds PLAINTEXT signature according to:
+        // http://tools.ietf.org/html/rfc5849#section-3.4.4
+        return plaintext_signature;
     }
-    throw oauth1_exception(U("invalid signature method.")); // Should never happen.
+    abort(); // Programmer error, fail fast
 }
 
 pplx::task<void> oauth1_config::_request_token(oauth1_state state, bool is_temp_token_request)
@@ -281,7 +304,7 @@ pplx::task<void> oauth1_config::_request_token(oauth1_state state, bool is_temp_
     req.set_request_uri(utility::string_t());
     req._set_base_uri(endpoint);
 
-    _authenticate_request(req, std::move(state));
+    req.headers().add(header_names::authorization, build_authorization_header(req, state));
 
     // configure proxy
     http_client_config config;
@@ -333,7 +356,7 @@ pplx::task<void> oauth1_config::_request_token(oauth1_state state, bool is_temp_
     });
 }
 
-void oauth1_config::_authenticate_request(http_request &request, oauth1_state state)
+utility::string_t oauth1_config::build_authorization_header(const http_request& request, const oauth1_state& state)
 {
     utility::ostringstream_t os;
     os.imbue(std::locale::classic());
@@ -351,7 +374,7 @@ void oauth1_config::_authenticate_request(http_request &request, oauth1_state st
     os << "\", " << oauth1_strings::signature_method << "=\"" << method();
     os << "\", " << oauth1_strings::timestamp << "=\"" << state.timestamp();
     os << "\", " << oauth1_strings::nonce << "=\"" << state.nonce();
-    os << "\", " << oauth1_strings::signature << "=\"" << uri::encode_data_string(_build_signature(request, state));
+    os << "\", " << oauth1_strings::signature << "=\"" << _build_encoded_signature(*this, request, state);
     os << "\"";
 
     if (!state.extra_key().empty())
@@ -359,7 +382,7 @@ void oauth1_config::_authenticate_request(http_request &request, oauth1_state st
         os << ", " << state.extra_key() << "=\"" << web::uri::encode_data_string(state.extra_value()) << "\"";
     }
 
-    request.headers().add(header_names::authorization, os.str());
+    return os.str();
 }
 
 pplx::task<utility::string_t> oauth1_config::build_authorization_uri()
@@ -440,7 +463,7 @@ namespace details
 
         virtual pplx::task<http_response> propagate(http_request request) override
         {
-            m_config._authenticate_request(request);
+            request.headers().add(header_names::authorization, m_config.build_authorization_header(request, m_config._generate_auth_state()));
             return next_stage()->propagate(request);
         }
 

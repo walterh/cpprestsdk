@@ -367,6 +367,7 @@ public:
     /// </summary>
     /// <returns>Client state string used in authorization.</returns>
     const utility::string_t& state() { return m_state; }
+
     /// <summary>
     /// Set client state string for authorization for token.
     /// The state string is used in authorization for security reasons
@@ -383,6 +384,7 @@ public:
     /// </summary>
     /// <returns>Token.</returns>
     const oauth2_token& token() const { return m_token; }
+
     /// <summary>
     /// Set token.
     /// </summary>
@@ -477,20 +479,6 @@ private:
     _ASYNCRTIMP pplx::task<void> _request_token(uri_builder& request_body);
 
     oauth2_token _parse_token_from_json(const json::value& token_json);
-
-    void _authenticate_request(http_request &req) const
-    {
-        if (bearer_auth())
-        {
-            req.headers().add(header_names::authorization, _XPLATSTR("Bearer ") + token().access_token());
-        }
-        else
-        {
-            uri_builder ub(req.request_uri());
-            ub.append_query(access_token_key(), token().access_token());
-            req.set_request_uri(ub.to_uri());
-        }
-    }
 
     utility::string_t m_client_key;
     utility::string_t m_client_secret;

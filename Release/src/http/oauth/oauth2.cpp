@@ -24,6 +24,7 @@
 ****/
 
 #include "stdafx.h"
+#include "cpprest/oauth2.h"
 
 using web::http::client::http_client;
 using web::http::client::http_client_config;
@@ -236,7 +237,16 @@ namespace details
 
         virtual pplx::task<http_response> propagate(http_request request) override
         {
-            m_config._authenticate_request(request);
+            if (m_config.bearer_auth())
+            {
+                request.headers().add(header_names::authorization, _XPLATSTR("Bearer ") + m_config.token().access_token());
+            }
+            else
+            {
+                uri_builder ub(request.request_uri());
+                ub.append_query(m_config.access_token_key(), m_config.token().access_token());
+                request.set_request_uri(ub.to_uri());
+            }
             return next_stage()->propagate(request);
         }
 
