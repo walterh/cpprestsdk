@@ -429,6 +429,32 @@ const oauth1_token& oauth1_config::token() const
 #undef _OAUTH1_METHODS
 #undef DAT
 
+namespace details
+{
+    class oauth1_pipeline_stage : public http_pipeline_stage
+    {
+    public:
+        oauth1_pipeline_stage(const experimental::oauth1_config& cfg) :
+            m_config(cfg)
+        {}
+
+        virtual pplx::task<http_response> propagate(http_request request) override
+        {
+            m_config._authenticate_request(request);
+            return next_stage()->propagate(request);
+        }
+
+    private:
+        experimental::oauth1_config m_config;
+    };
+
+}
+
+std::shared_ptr<http::http_pipeline_stage> oauth1_config::create_pipeline_stage() const
+{
+    return std::static_pointer_cast<http::http_pipeline_stage>(std::make_shared<details::oauth1_pipeline_stage>(*this));
+}
+
 }}}}
 
 #endif

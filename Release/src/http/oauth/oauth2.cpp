@@ -225,4 +225,30 @@ oauth2_token oauth2_config::_parse_token_from_json(const json::value& token_json
     return result;
 }
 
+namespace details
+{
+    class oauth2_pipeline_stage : public http_pipeline_stage
+    {
+    public:
+        oauth2_pipeline_stage(const oauth2_config& cfg) :
+            m_config(cfg)
+        {}
+
+        virtual pplx::task<http_response> propagate(http_request request) override
+        {
+            m_config._authenticate_request(request);
+            return next_stage()->propagate(request);
+        }
+
+    private:
+        oauth2_config m_config;
+    };
+
+}
+
+std::shared_ptr<http::http_pipeline_stage> oauth2_config::create_pipeline_stage() const
+{
+    return std::static_pointer_cast<http::http_pipeline_stage>(std::make_shared<details::oauth2_pipeline_stage>(*this));
+}
+
 }}}} // namespace web::http::oauth2::experimental

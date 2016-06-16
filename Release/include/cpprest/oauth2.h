@@ -34,19 +34,14 @@ namespace web
 {
 namespace http
 {
-namespace client
-{
-    // Forward declaration to avoid circular include dependency.
-    class http_client_config;
-}
+
+class http_pipeline_stage;
 
 /// oAuth 2.0 library.
 namespace oauth2
 {
 namespace details
 {
-
-class oauth2_handler;
 
 // Constant strings for OAuth 2.0.
 typedef utility::string_t oauth2_string;
@@ -170,6 +165,8 @@ private:
     utility::string_t m_scope;
     int64_t m_expires_in;
 };
+
+namespace details { class oauth2_pipeline_stage; }
 
 /// <summary>
 /// OAuth 2.0 configuration.
@@ -466,9 +463,10 @@ public:
 		m_proxy = proxy;
 	}
 
+    _ASYNCRTIMP std::shared_ptr<http::http_pipeline_stage> create_pipeline_stage() const;
+
 private:
-    friend class web::http::client::http_client_config;
-    friend class web::http::oauth2::details::oauth2_handler;
+    friend class details::oauth2_pipeline_stage;
 
     oauth2_config() :
         m_implicit_grant(false),
@@ -516,29 +514,6 @@ private:
 
 } // namespace web::http::oauth2::experimental
 
-namespace details
-{
-
-class oauth2_handler : public http_pipeline_stage
-{
-public:
-    oauth2_handler(std::shared_ptr<experimental::oauth2_config> cfg) :
-        m_config(std::move(cfg))
-    {}
-
-    virtual pplx::task<http_response> propagate(http_request request) override
-    {
-        if (m_config)
-        {
-            m_config->_authenticate_request(request);
-        }
-        return next_stage()->propagate(request);
-    }
-
-private:
-    std::shared_ptr<experimental::oauth2_config> m_config;
-};
-
-}}}}
+}}}
 
 #endif
