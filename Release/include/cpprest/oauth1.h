@@ -287,7 +287,7 @@ public:
     /// <returns>Task that fetches the access token based on the verifier.</returns>
     pplx::task<void> token_from_verifier(utility::string_t verifier)
     {
-        return _request_token(_generate_auth_state(details::oauth1_strings::verifier, std::move(verifier)), false);
+        return _request_token(_generate_auth_state(oauth1::details::oauth1_strings::verifier, std::move(verifier)), false);
     }
 
     /// <summary>
@@ -416,11 +416,11 @@ public:
 
     // Builds signature base string according to:
     // http://tools.ietf.org/html/rfc5849#section-3.4.1.1
-    _ASYNCRTIMP utility::string_t _build_signature_base_string(http_request request, details::oauth1_state state) const;
+    _ASYNCRTIMP utility::string_t _build_signature_base_string(http_request request, oauth1::details::oauth1_state state) const;
 
     // Builds HMAC-SHA1 signature according to:
     // http://tools.ietf.org/html/rfc5849#section-3.4.2
-    utility::string_t _build_hmac_sha1_signature(http_request request, details::oauth1_state state) const
+    utility::string_t _build_hmac_sha1_signature(http_request request, oauth1::details::oauth1_state state) const
     {
         auto text(_build_signature_base_string(std::move(request), std::move(state)));
         auto digest(_hmac_sha1(_build_key(), std::move(text)));
@@ -435,14 +435,14 @@ public:
         return _build_key();
     }
 
-    details::oauth1_state _generate_auth_state(utility::string_t extra_key, utility::string_t extra_value)
+    oauth1::details::oauth1_state _generate_auth_state(utility::string_t extra_key, utility::string_t extra_value)
     {
-        return details::oauth1_state(_generate_timestamp(), _generate_nonce(), std::move(extra_key), std::move(extra_value));
+        return oauth1::details::oauth1_state(_generate_timestamp(), _generate_nonce(), std::move(extra_key), std::move(extra_value));
     }
 
-    details::oauth1_state _generate_auth_state()
+    oauth1::details::oauth1_state _generate_auth_state()
     {
-        return details::oauth1_state(_generate_timestamp(), _generate_nonce());
+        return oauth1::details::oauth1_state(_generate_timestamp(), _generate_nonce());
     }
 
     /// <summary>
@@ -502,7 +502,7 @@ public:
 
 private:
     friend class web::http::client::http_client_config;
-    friend class web::http::oauth1::details::oauth1_handler;
+    friend class web::http::oauth1::experimental::details::oauth1_pipeline_stage;
 
     oauth1_config() :
         m_is_authorization_completed(false)
@@ -522,9 +522,9 @@ private:
 
     static utility::string_t _build_base_string_uri(const uri& u);
 
-    utility::string_t _build_normalized_parameters(web::http::uri u, const details::oauth1_state& state) const;
+    utility::string_t _build_normalized_parameters(web::http::uri u, const oauth1::details::oauth1_state& state) const;
 
-    utility::string_t _build_signature(http_request request, details::oauth1_state state) const;
+    utility::string_t _build_signature(http_request request, oauth1::details::oauth1_state state) const;
 
     utility::string_t _build_key() const
     {
@@ -536,9 +536,9 @@ private:
         _authenticate_request(req, _generate_auth_state());
     }
 
-    _ASYNCRTIMP void _authenticate_request(http_request &req, details::oauth1_state state);
+    _ASYNCRTIMP void _authenticate_request(http_request &req, oauth1::details::oauth1_state state);
 
-    _ASYNCRTIMP pplx::task<void> _request_token(details::oauth1_state state, bool is_temp_token_request);
+    _ASYNCRTIMP pplx::task<void> _request_token(oauth1::details::oauth1_state state, bool is_temp_token_request);
 
     utility::string_t m_consumer_key;
     utility::string_t m_consumer_secret;

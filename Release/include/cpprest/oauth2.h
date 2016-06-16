@@ -223,7 +223,7 @@ public:
                 m_implicit_grant(false),
                 m_bearer_auth(true),
                 m_http_basic_auth(true),
-                m_access_token_key(details::oauth2_strings::access_token)
+                m_access_token_key(web::http::oauth2::details::oauth2_strings::access_token)
     {}
 
     /// <summary>
@@ -265,9 +265,9 @@ public:
     pplx::task<void> token_from_code(utility::string_t authorization_code)
     {
         uri_builder ub;
-        ub.append_query(details::oauth2_strings::grant_type, details::oauth2_strings::authorization_code, false);
-        ub.append_query(details::oauth2_strings::code, uri::encode_data_string(std::move(authorization_code)), false);
-        ub.append_query(details::oauth2_strings::redirect_uri, uri::encode_data_string(redirect_uri()), false);
+        ub.append_query(oauth2::details::oauth2_strings::grant_type, oauth2::details::oauth2_strings::authorization_code, false);
+        ub.append_query(oauth2::details::oauth2_strings::code, uri::encode_data_string(std::move(authorization_code)), false);
+        ub.append_query(oauth2::details::oauth2_strings::redirect_uri, uri::encode_data_string(redirect_uri()), false);
         return _request_token(ub);
     }
 
@@ -282,8 +282,8 @@ public:
     pplx::task<void> token_from_refresh()
     {
         uri_builder ub;
-        ub.append_query(details::oauth2_strings::grant_type, details::oauth2_strings::refresh_token, false);
-        ub.append_query(details::oauth2_strings::refresh_token, uri::encode_data_string(token().refresh_token()), false);
+        ub.append_query(oauth2::details::oauth2_strings::grant_type, oauth2::details::oauth2_strings::refresh_token, false);
+        ub.append_query(oauth2::details::oauth2_strings::refresh_token, uri::encode_data_string(token().refresh_token()), false);
         return _request_token(ub);
     }
 
