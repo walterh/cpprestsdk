@@ -491,8 +491,6 @@ private:
         return utility::details::print_string(utility::datetime::utc_timestamp());
     }
 
-    _ASYNCRTIMP utility::string_t build_authorization_header(const http_request& request, const oauth1::details::oauth1_state& state);
-
     _ASYNCRTIMP pplx::task<void> _request_token(oauth1::details::oauth1_state state, bool is_temp_token_request);
 
     utility::string_t m_consumer_key;
