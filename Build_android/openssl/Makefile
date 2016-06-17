@@ -10,15 +10,21 @@ clean:
 	rm -rf setenv-android-x86.sh
 
 setenv-android.sh:
+	if [ ! -e "setenv-android.sh" ]
+	then
 	wget https://wiki.openssl.org/images/7/70/Setenv-android.sh
 	mv Setenv-android.sh setenv-android.sh
 	chmod a+x setenv-android.sh
-
+	fi
+	
 setenv-android-x86.sh: setenv-android.sh
+	if [ ! -e "setenv-android-x86.sh" ]
+	then
 	cp setenv-android.sh setenv-android-x86.sh.tmp
-	sed -i 's/_ANDROID_EABI="arm-linux-androideabi-4.8"/_ANDROID_EABI="x86-4.8"/g' setenv-android-x86.sh.tmp
+	sed -i 's/_ANDROID_EABI="arm-linux-androideabi-4.9"/_ANDROID_EABI="x86-4.9"/g' setenv-android-x86.sh.tmp
 	sed -i 's/_ANDROID_ARCH=arch-arm/_ANDROID_ARCH=arch-x86/g' setenv-android-x86.sh.tmp
 	mv setenv-android-x86.sh.tmp setenv-android-x86.sh
+	fi
 
 $(OPENSSL_VER).tar.gz:
 	wget https://www.openssl.org/source/$(OPENSSL_VER).tar.gz
