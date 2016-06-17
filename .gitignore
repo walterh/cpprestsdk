@@ -65,3 +65,4 @@ Intermediate/
 !**/packages/build/
 build.debug/
 Build_android/openssl/*armeabi*
+Build_android/libiconv/libiconv-1.13.1/

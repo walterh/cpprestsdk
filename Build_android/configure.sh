@@ -140,18 +140,16 @@ fi
 if [ "${DO_LIBICONV}" == "1" ]
 then
 (
-    if [ ! -e "libiconv-1.13.1.tar.gz" ]
+	pushd libiconv
+    if [ ! -e "libiconv-1.13.1" ]
     then
 	wget http://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.13.1.tar.gz
+    tar xzf ./libiconv-1.13.1.tar.gz
+    #cp $DIR/libiconv/libiconv.patch .
+    patch -b -p0 < "libiconv.patch"
     fi
-    rm -rf libiconv
-    mkdir libiconv
-    cd libiconv
-    tar xzf ../libiconv-1.13.1.tar.gz
-    patch -b -p0 < "$DIR/libiconv/libiconv.patch"
     cd libiconv-1.13.1
     ./configure
-    cp -r "$DIR/libiconv/jni" ..
     cd ../jni
     "${NDK_DIR}/ndk-build" || exit 1
     cd ..
@@ -163,6 +161,7 @@ then
     cp libiconv-1.13.1/include/iconv.h x86/include/
     cp obj/local/x86/libiconv.a x86/lib/
     cp obj/local/armeabi-v7a/libiconv.a armeabi-v7a/lib/
+    popd
 )
 fi
 
